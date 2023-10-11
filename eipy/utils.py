@@ -32,6 +32,26 @@ def set_predictor_seeds(base_predictors, random_state):
         if hasattr(v, "random_state") and hasattr(v, "set_params"):
             v.set_params(**{"random_state": random_state})
 
+def filter_predictors(y, preds):
+    valid_multilabel_predictors = [
+    "DecisionTreeClassifier",
+    "ExtraTreeClassifier",
+    "ExtraTreesClassifier",
+    "KNeighborsClassifier",
+    "MLPClassifier",
+    "RadiusNeighborsClassifier",
+    "RandomForestClassifier",
+    "RidgeClassifier",
+    "RidgeClassifierCV"]
+
+    if y.ndim >= 2: #multilabeled data
+        keys_to_remove = []
+        for key, value in preds.items():
+            if str(value).split(".")[0].split("(")[0] not in valid_multilabel_predictors:
+                keys_to_remove.append(key)
+        for k in keys_to_remove:
+            del preds[k]
+    
 
 def X_is_dict(X):
     if isinstance(X, dict):
@@ -90,10 +110,11 @@ def y_to_numpy(y):
 
 
 def is_binary_array(arr):
-    if all(x == 0 or x == 1 or x == 0.0 or x == 1.0 for x in arr):
-        return True
-    else:
-        return False
+    bin = True
+    for label in arr:
+        if not all(x == 0 or x == 1 or x == 0.0 or x == 1.0 for x in label):
+            bin = False
+    return bin
 
 
 class dummy_cv:

@@ -15,6 +15,8 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.base import clone
 from joblib import Parallel, delayed
 import warnings
+from scikeras.wrappers import KerasClassifier
+import tensorflow as tf
 from eipy.utils import (
     X_is_dict,
     X_to_numpy,
@@ -453,6 +455,11 @@ class EnsembleIntegration:
 
         if base_predictors is not None:
             self.base_predictors = base_predictors  # update base predictors
+        
+        for k, model in self.base_predictors.items():
+            if isinstance(model, tf.keras.Model):
+                self.base_predictors[k] = KerasClassifier(model=model, optimizer=model.optimizer.name)
+
 
         # dictionaries for ensemble train/test data for each outer fold
         ensemble_training_data_modality = []
@@ -572,7 +579,7 @@ class EnsembleIntegration:
         if self.calibration_model is not None:
             self.calibration_model.base_estimator = model
             model = self.calibration_model
-
+        
         model.fit(X_sample, y_sample)
 
         if model_building:

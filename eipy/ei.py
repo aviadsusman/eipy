@@ -131,7 +131,7 @@ class EnsembleIntegration:
         k_outer=5,
         k_inner=5,
         n_samples=1,
-        sampling_strategy="undersampling",
+        sampling_strategy=None,
         sampling_aggregation=None,
         n_jobs=1,
         metrics=None,

@@ -17,7 +17,11 @@ from joblib import Parallel, delayed
 import warnings
 from scikeras.wrappers import KerasClassifier
 import tensorflow as tf
-from eipy.utils import (
+import keras as k
+from tensorflow.keras.callbacks import TensorBoard
+import datetime
+import os
+from eipy.deep_utils import (
     X_is_dict,
     X_to_numpy,
     y_to_numpy,
@@ -29,6 +33,7 @@ from eipy.utils import (
     safe_predict_proba,
     dummy_cv,
     bar_format,
+    get_log_dir
 )
 from eipy.metrics import (
     base_summary,
@@ -133,7 +138,7 @@ class EnsembleIntegration:
         k_outer=5,
         k_inner=5,
         n_samples=1,
-        sampling_strategy="undersampling",
+        sampling_strategy=None,
         sampling_aggregation=None,
         n_jobs=1,
         metrics=None,
@@ -456,9 +461,10 @@ class EnsembleIntegration:
         if base_predictors is not None:
             self.base_predictors = base_predictors  # update base predictors
         
-        for k, model in self.base_predictors.items():
+        '''for k, model in self.base_predictors.items():
             if isinstance(model, tf.keras.Model):
                 self.base_predictors[k] = KerasClassifier(model=model, optimizer=model.optimizer.name)
+                '''
 
 
         # dictionaries for ensemble train/test data for each outer fold
@@ -559,13 +565,13 @@ class EnsembleIntegration:
         Train/test single base predictor, on a given training fold,
         subject to a given sampling strategy.
         """
-
         model_name, model = model_params
 
-        model = clone(model)
+        # model = clone(model) this line seems unnecessary. if kept, use KerasClassifier to pass NN models through.
 
         fold_id, (train_index, test_index) = fold_params
         sample_id, sample_random_state = sample_state
+
 
         X_train, X_test = X[train_index], X[test_index]
         y_train, y_test = y[train_index], y[test_index]
@@ -575,12 +581,13 @@ class EnsembleIntegration:
             strategy=self.sampling_strategy,
             random_state=sample_random_state,
         )
-
         if self.calibration_model is not None:
             self.calibration_model.base_estimator = model
             model = self.calibration_model
-        
-        model.fit(X_sample, y_sample)
+
+        log_dir = get_log_dir(fold_id=fold_id, modelname=model_name)
+        tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=0)
+        model.fit(X_sample, y_sample, callbacks=[tensorboard_callback], epochs=1, batch_size=1)
 
         if model_building:
             results_dict = {
@@ -621,6 +628,7 @@ class EnsembleIntegration:
                         if d["model name"] == model_name and d["sample id"] == sample_id
                     )
                 )
+                model_predictions = model_predictions.reshape(-1)
                 combined_predictions[
                     modality, model_name, sample_id
                 ] = model_predictions
@@ -632,6 +640,7 @@ class EnsembleIntegration:
                 and d["sample id"] == 0
             )
         )
+        
         combined_predictions = pd.DataFrame(combined_predictions).rename_axis(
             ["modality", "base predictor", "sample"], axis=1
         )
@@ -661,7 +670,7 @@ class EnsembleIntegration:
                         and d["model name"] == model_name
                         and d["sample id"] == sample_id
                     )
-                    predictions[modality, model_name, sample_id] = model_predictions[0]
+                    predictions[modality, model_name, sample_id] = model_predictions[0].reshape(-1)
             predictions = pd.DataFrame(predictions)
 
             if not model_building:

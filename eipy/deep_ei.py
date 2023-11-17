@@ -199,7 +199,8 @@ class EnsembleIntegration:
 
     def fit_base(self, X, y, base_predictors=None, modality_name=None):
         """
-        Train base predictors and generate ensemble train/test data.
+        Train base predictors and generate ensemble train/test data. For modality specific base 
+        predictors run this method in loop over modalities and corresponding dicts.
 
         Parameters
         ----------

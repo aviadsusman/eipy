@@ -124,6 +124,10 @@ def random_integers(n_integers=1, seed=42):
     random.seed(seed)
     return random.sample(range(0, 10000), n_integers)
 
+def reshape_for_sampling(X, function):
+    '''Reshape high dimensional arrays for sampling, then restore original shapes. To be used as a wrapper'''
+
+
 
 def sample(X, y, strategy, random_state):
     '''Reshape data to pass through samplers. Then restore original shape.'''
@@ -160,7 +164,10 @@ def sample(X, y, strategy, random_state):
         y_resampled = np.concatenate([y_maj, y_min])
 
     if (strategy == "undersampling") or (strategy == "oversampling"):
-        X_resampled, y_resampled = sampler.fit_resample(X=X, y=y)
+        shape = X.shape[1:]
+        X_reshaped = X.reshape(X.shape[0], np.prod(shape))
+        X_resampled, y_resampled = sampler.fit_resample(X=X_reshaped, y=y)
+        X_resampled = X_resampled.reshape((X_resampled.shape[0])+shape)
     return X_resampled, y_resampled
 
 

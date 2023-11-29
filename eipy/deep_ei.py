@@ -582,7 +582,7 @@ class EnsembleIntegration:
         """
         model_name, model = model_params
 
-        model = clone(model)
+        # model = clone(model)
 
         fold_id, (train_index, test_index) = fold_params
         sample_id, sample_random_state = sample_state

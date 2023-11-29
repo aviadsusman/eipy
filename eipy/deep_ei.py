@@ -17,10 +17,8 @@ from joblib import Parallel, delayed
 import warnings
 from scikeras.wrappers import KerasClassifier
 import tensorflow as tf
-import keras as k
-from tensorflow.keras.callbacks import TensorBoard
-import datetime
-import os
+import keras
+from scikeras.wrappers import KerasClassifier
 from eipy.deep_utils import (
     X_is_dict,
     X_to_numpy,
@@ -33,7 +31,6 @@ from eipy.deep_utils import (
     safe_predict_proba,
     dummy_cv,
     bar_format,
-    get_log_dir
 )
 from eipy.metrics import (
     base_summary,
@@ -41,6 +38,28 @@ from eipy.metrics import (
 )
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+class TFWrapper(keras.Model):
+    def __init__(self, base_model, fold_id):
+        super().__init__()
+        self.__dict__.update(base_model.__dict__)
+        self.initial_weights = self.get_weights()
+        self.fold_id = fold_id
+
+    def layer_names(self):
+        for layer in self.layers:
+            layer._name = layer.name+str(self.fold_id)
+    
+    def call(self, inputs, training=None, mask=None):
+        return self(inputs, training=training, mask=mask)
+    
+
+    def fit(self, X, y, **kwargs):
+        self.set_weights(self.initial_weights)
+        self.layer_names()
+        self.compile(**self.get_compile_config())
+        print(self.inputs, self.outputs)
+        super(TFWrapper, self).fit(X, y, epochs=1, batch_size=1, **kwargs)
 
 
 class EnsembleIntegration:
@@ -461,11 +480,6 @@ class EnsembleIntegration:
 
         if base_predictors is not None:
             self.base_predictors = base_predictors  # update base predictors
-        
-        '''for k, model in self.base_predictors.items():
-            if isinstance(model, tf.keras.Model):
-                self.base_predictors[k] = KerasClassifier(model=model, optimizer=model.optimizer.name)
-                '''
 
 
         # dictionaries for ensemble train/test data for each outer fold
@@ -568,7 +582,7 @@ class EnsembleIntegration:
         """
         model_name, model = model_params
 
-        # model = clone(model) this line seems unnecessary. if kept, use KerasClassifier to pass NN models through.
+        model = clone(model)
 
         fold_id, (train_index, test_index) = fold_params
         sample_id, sample_random_state = sample_state
@@ -586,9 +600,14 @@ class EnsembleIntegration:
             self.calibration_model.base_estimator = model
             model = self.calibration_model
 
-        log_dir = get_log_dir(fold_id=fold_id, modelname=model_name)
-        tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=0)
-        model.fit(X_sample, y_sample, callbacks=[tensorboard_callback], epochs=1, batch_size=1)
+
+        # if isinstance(model, KerasClassifier):
+        #     print([layer.name for layer in model.model.layers])
+        #     for layer in model.model.layers[1:]:
+        #         layer._name = layer.name + str(fold_id)
+        #     print([layer.name for layer in model.model.layers])
+
+        model.fit(X_sample, y_sample)
 
         if model_building:
             results_dict = {

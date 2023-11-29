@@ -9,7 +9,7 @@ from imblearn.over_sampling import RandomOverSampler
 import warnings
 from sklearn.pipeline import Pipeline
 from sklearn.exceptions import UndefinedMetricWarning
-
+import keras
 import os
 
 warnings.filterwarnings(action="ignore", category=UndefinedMetricWarning)
@@ -200,6 +200,3 @@ def append_modality(current_data, modality_data, model_building=False):
                     pd.concat((dataframe.iloc[:, :], modality_data[fold]), axis=1)
                 )
     return combined_dataframe
-
-def get_log_dir(fold_id, modelname):
-    return os.path.join("logs", f"{modelname}_{fold_id}")

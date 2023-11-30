@@ -39,28 +39,18 @@ from eipy.metrics import (
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-class TFWrapper(keras.Model):
-    def __init__(self, base_model, fold_id):
-        super().__init__()
-        self.__dict__.update(base_model.__dict__)
-        self.initial_weights = self.get_weights()
-        self.fold_id = fold_id
+# class TFWrapper(keras.Model):
+#     def __init__(self, base_model, **kwargs):
+#         super(TFWrapper, self).__init__(**kwargs)
+#         self.base_model = base_model
+#         self.__dict__.update(base_model.__dict__)
+#         self.og_weights = [tf.identity(w) for w in base_model.get_weights()]
 
-    def layer_names(self):
-        for layer in self.layers:
-            layer._name = layer.name+str(self.fold_id)
-    
-    def call(self, inputs, training=None, mask=None):
-        return self(inputs, training=training, mask=mask)
-    
-
-    def fit(self, X, y, **kwargs):
-        self.set_weights(self.initial_weights)
-        self.layer_names()
-        self.compile(**self.get_compile_config())
-        print(self.inputs, self.outputs)
-        super(TFWrapper, self).fit(X, y, epochs=1, batch_size=1, **kwargs)
-
+#     def call(self, inputs, training=False):
+#         x = inputs
+#         for layer in self.layers:
+#             x = layer(x, training=training)
+#         return x
 
 class EnsembleIntegration:
     """
@@ -186,6 +176,7 @@ class EnsembleIntegration:
         self.calibration_model = calibration_model
         self.model_building = model_building
         self.verbose = verbose
+        self.og_weights = {}
 
         self.final_models = {
             "base models": {},
@@ -249,6 +240,9 @@ class EnsembleIntegration:
 
         #  set random_states in base_predictors
         set_predictor_seeds(self.base_predictors, self.random_state)
+
+        for k,v in base_predictors.items():
+            self.og_weights[k] = [tf.identity(w) for w in v.get_weights()]
 
         #  check data format and train accordingly
         if X_is_dict(X):
@@ -582,8 +576,6 @@ class EnsembleIntegration:
         """
         model_name, model = model_params
 
-        # model = clone(model)
-
         fold_id, (train_index, test_index) = fold_params
         sample_id, sample_random_state = sample_state
 
@@ -600,14 +592,13 @@ class EnsembleIntegration:
             self.calibration_model.base_estimator = model
             model = self.calibration_model
 
+        if isinstance(model, keras.Model):
+            model.set_weights(self.og_weights[model_name])
+            model.compile(**model.get_compile_config())
 
-        # if isinstance(model, KerasClassifier):
-        #     print([layer.name for layer in model.model.layers])
-        #     for layer in model.model.layers[1:]:
-        #         layer._name = layer.name + str(fold_id)
-        #     print([layer.name for layer in model.model.layers])
-
-        model.fit(X_sample, y_sample)
+        print(model.weights[-1].__array__()[0])
+        model.fit(X_sample, y_sample, epochs=1, batch_size=1)
+        print(model.weights[-1].__array__()[0])
 
         if model_building:
             results_dict = {

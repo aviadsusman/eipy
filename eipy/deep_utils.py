@@ -106,7 +106,7 @@ class dummy_cv:
 
     def split(self, X, y, groups=None):
         indices = np.arange(0, len(X), 1)
-        yield indices, []
+        yield indices, [0]
 
     def get_n_splits(self, X, y, groups=None):
         return self.n_splits
@@ -195,3 +195,8 @@ def append_modality(current_data, modality_data, model_building=False):
                     pd.concat((dataframe.iloc[:, :], modality_data[fold]), axis=1)
                 )
     return combined_dataframe
+
+def relabel_network_labels(model, fold_id):
+    for layer in model.layers:
+        layer._name = layer.name + str(fold_id)
+    

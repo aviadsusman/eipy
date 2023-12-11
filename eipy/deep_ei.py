@@ -479,6 +479,8 @@ class EnsembleIntegration:
         # dictionaries for ensemble train/test data for each outer fold
         ensemble_training_data_modality = []
 
+        bps_for_fold = {}
+
         # define joblib Parallel function
         with Parallel(
             n_jobs=self.n_jobs, verbose=0, backend=self.parallel_backend
@@ -593,12 +595,14 @@ class EnsembleIntegration:
             model = self.calibration_model
 
         if isinstance(model, keras.Model):
-            model.set_weights(self.og_weights[model_name])
             model.compile(**model.get_compile_config())
+            # for layer in model.layers:
+            #     layer._name = layer.name + str(fold_id)
+            model.set_weights(self.og_weights[model_name])
+            print(f"\nfinal weights for {model_name}_{fold_id}: {model.layers[-1].weights} \n")
+            model.fit(X_sample, y_sample, epochs=1, batch_size=1)
+            print(f"\nfinal weights for {model_name}_{fold_id}: {model.layers[-1].weights} \n")
 
-        print(model.weights[-1].__array__()[0])
-        model.fit(X_sample, y_sample, epochs=1, batch_size=1)
-        print(model.weights[-1].__array__()[0])
 
         if model_building:
             results_dict = {

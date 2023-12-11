@@ -283,6 +283,11 @@ class EnsembleIntegration:
                     X_train = X_train.T.groupby(level=[0, 1]).mean().T
                     X_test = X_test.T.groupby(level=[0, 1]).mean().T
 
+                #longitudinal data
+                if isinstance(X_train, list): 
+                    X_train = np.stack([df.values for df in X_train], axis=0)
+                    X_test = np.stack([df.values for df in X_test], axis=0)
+
                 model.fit(X_train, y_train)
                 y_pred = safe_predict_proba(model, X_test)
                 y_pred_combined.extend(y_pred)

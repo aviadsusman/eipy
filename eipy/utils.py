@@ -162,8 +162,14 @@ def sample(X, y, strategy, random_state):
 
 
 def retrieve_X_y(labelled_data):
-    X = labelled_data.drop(columns=["labels"], level=0)
-    y = np.ravel(labelled_data["labels"])
+    if isinstance(labelled_data, pd.DataFrame):
+        X = labelled_data.drop(columns=["labels"], level=0)
+        y = np.ravel(labelled_data["labels"])
+    # longitudinal data. open to more data formats
+    elif isinstance(labelled_data, list):
+        X = [data.drop(columns=["labels"], level=0) for data in labelled_data]
+        y = np.ravel(labelled_data[0]["labels"])
+    
     return X, y
 
 

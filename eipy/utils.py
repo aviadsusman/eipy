@@ -85,8 +85,8 @@ def y_to_numpy(y):
             or pandas Series."""
         )
 
-    if not is_binary_array(_y):
-        raise ValueError("y must contain binary values.")
+    # if not is_binary_array(_y):
+    #     raise ValueError("y must contain binary values.")
 
     return _y
 
@@ -109,10 +109,28 @@ class dummy_cv:
     def get_n_splits(self, X, y, groups=None):
         return self.n_splits
 
+def  predictive_multiclass_data(meta_dataframe): #turning probabilistic multiclass meta data into predictions
+    predictive_meta_dataframe = []
+    for i,df in enumerate(meta_dataframe):
+        if df.columns.names[-1] == "class": #multiclass check
+            pred_frame = df.loc[:, df.columns.get_level_values(0) != "labels"].groupby(level=[0,1,2], axis=1).idxmax()
+            pred_frame = pred_frame.applymap(lambda x: x[-1])
+            
+            if "labels" in list(df.columns.get_level_values(level=0)):
+                pred_frame["labels"] = df["labels"]
+
+            predictive_meta_dataframe.append(pred_frame)
+    
+    return  predictive_meta_dataframe
+    
+
 
 def safe_predict_proba(model, X):  # uses predict_proba method where possible
     if hasattr(model, "predict_proba"):
-        y_pred = model.predict_proba(X)[:, 1]
+        y_pred = model.predict_proba(X)
+        if len(y_pred[0]) == 2: #binary classification
+            y_pred=y_pred[:, 1]
+        
     else:
         y_pred = model.predict(X)
     return y_pred
@@ -162,8 +180,13 @@ def sample(X, y, strategy, random_state):
 
 
 def retrieve_X_y(labelled_data):
-    X = labelled_data.drop(columns=["labels"], level=0)
-    y = np.ravel(labelled_data["labels"])
+    if isinstance(labelled_data, pd.DataFrame):
+        X = labelled_data.drop(columns=["labels"], level=0)
+        y = np.ravel(labelled_data["labels"])
+    # longitudinal data. open to more data formats
+    elif isinstance(labelled_data, list):
+        X = [data.drop(columns=["labels"], level=0) for data in labelled_data]
+        y = np.ravel(labelled_data[0]["labels"])
     return X, y
 
 

@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 import inspect
-from eipy.utils import minority_class
-from sklearn.metrics import roc_auc_score, precision_recall_curve
+from eipy.utils import minority_class, predictive_multiclass_data
+from sklearn.metrics import roc_auc_score, precision_recall_curve, precision_score, recall_score, f1_score
 
 
 def fmax_score(y_test, y_score, beta=1.0, pos_label=1):
@@ -62,35 +62,53 @@ def scores(y_true, y_pred, metrics):
     """
 
     # default metrics to calculate
-    if metrics is None:
-        metrics = {"fmax (minority)": fmax_score, "auc": roc_auc_score}
-
-    pos_label = minority_class(y_true)  # gives value 1 or 0
-
     metric_threshold_dict = {}
 
-    for metric_key, metric in metrics.items():
-        # if y_pred parameter exists in metric function then y
-        # should be target prediction vector
-        if "y_pred" in inspect.signature(metric).parameters:
-            # calculate metric for target vector with threshold=0.5
-            metric_threshold_dict[metric_key] = (
-                try_metric_with_pos_label(
-                    y_true, (np.array(y_pred) >= 0.5).astype(int), metric, pos_label
-                ),
-                0.5,
-            )
-        # if y_score parameter exists in metric function then y should be probability vector
-        elif "y_score" in inspect.signature(metric).parameters:
-            metric_results = try_metric_with_pos_label(
-                y_true, y_pred, metric, pos_label
-            )
-            if isinstance(
-                metric_results, tuple
-            ):  # if metric includes threshold value as tuple
-                metric_threshold_dict[metric_key] = metric_results
-            else:  # add np.nan threshold if not outputted
-                metric_threshold_dict[metric_key] = metric_results, np.nan
+    if len(set(y_true)) == 2: #binary classification
+        if metrics is None:
+            metrics = {"fmax (minority)": fmax_score, "auc": roc_auc_score}
+        pos_label = minority_class(y_true)  # gives value 1 or 0
+
+
+        for metric_key, metric in metrics.items():
+            # if y_pred parameter exists in metric function then y
+            # should be target prediction vector
+            if "y_pred" in inspect.signature(metric).parameters:
+                # calculate metric for target vector with threshold=0.5
+                metric_threshold_dict[metric_key] = (
+                    try_metric_with_pos_label(
+                        y_true, (np.array(y_pred) >= 0.5).astype(int), metric, pos_label
+                    ),
+                    0.5,
+                )
+            # if y_score parameter exists in metric function then y should be probability vector
+            elif "y_score" in inspect.signature(metric).parameters:
+                metric_results = try_metric_with_pos_label(
+                    y_true, y_pred, metric, pos_label
+                )
+                if isinstance(
+                    metric_results, tuple
+                ):  # if metric includes threshold value as tuple
+                    metric_threshold_dict[metric_key] = metric_results
+                else:  # add np.nan threshold if not outputted
+                    metric_threshold_dict[metric_key] = metric_results, np.nan
+    
+    else:
+        if isinstance(y_pred[0], np.ndarray):
+            y_pred = [np.argmax(y) for y in  y_pred]
+        precision_macro = precision_score(y_true, y_pred, average='macro')
+        recall_macro = recall_score(y_true, y_pred, average='macro')
+        f1_macro = f1_score(y_true, y_pred, average='macro')
+
+        precision_micro = precision_score(y_true, y_pred, average='micro')
+        recall_micro = recall_score(y_true, y_pred, average='micro')
+        f1_micro = f1_score(y_true, y_pred, average='micro')
+
+        metric_threshold_dict = {
+            "precision" : (precision_macro, precision_micro),
+            "recall" : (recall_macro, recall_micro),
+            "f1" : (f1_macro,f1_micro)
+        }
 
     return metric_threshold_dict
 
@@ -142,6 +160,9 @@ def base_summary(ensemble_test_dataframes, metrics):
     """
     Create a base predictor performance summary by concatenating data across test folds
     """
+    if len(pd.unique(ensemble_test_dataframes[0]["labels"])) > 2:
+        ensemble_test_dataframes = predictive_multiclass_data(ensemble_test_dataframes)
+
     labels = pd.concat([df["labels"] for df in ensemble_test_dataframes])
     ensemble_test_averaged_samples = pd.concat(
         [

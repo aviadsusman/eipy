@@ -282,8 +282,13 @@ class EnsembleIntegration:
                 if self.sampling_aggregation == "mean":
                     X_train = X_train.T.groupby(level=[0, 1]).mean().T
                     X_test = X_test.T.groupby(level=[0, 1]).mean().T
+                
+                #longitudinal data
+                if isinstance(X_train, list): 
+                    X_train = np.stack([df.values for df in X_train], axis=1)
+                    X_test = np.stack([df.values for df in X_test], axis=1)
 
-                model.fit(X_train, y_train)
+                model.fit(X_train, y_train, epochs=10, batch_size=32)
                 y_pred = safe_predict_proba(model, X_test)
                 y_pred_combined.extend(y_pred)
 
@@ -302,13 +307,22 @@ class EnsembleIntegration:
                 desc="Training final ensemble models",
                 bar_format=bar_format,
             ):
-                X_train, y_train = retrieve_X_y(
-                    labelled_data=self.ensemble_training_data_final[0]
-                )
+                if len(self.ensemble_training_data_final) == 1:
+                    X_train, y_train = retrieve_X_y(
+                        labelled_data=self.ensemble_training_data_final[0]
+                    )
+                else:
+                    X_train, y_train = retrieve_X_y(
+                        labelled_data=self.ensemble_training_data_final
+                    )
 
                 if self.sampling_aggregation == "mean":
                     X_train = X_train.T.groupby(level=[0, 1]).mean().T
                     X_test = X_test.T.groupby(level=[0, 1]).mean().T
+                #longitudinal data
+                if isinstance(X_train, list): 
+                    X_train = np.stack([df.values for df in X_train], axis=1)
+                    X_test = np.stack([df.values for df in X_test], axis=1)
 
                 model.fit(X_train, y_train)
 
@@ -604,6 +618,16 @@ class EnsembleIntegration:
 
         # dictionary to store predictions
         combined_predictions = {}
+        
+        labels = np.concatenate(
+            list(
+                d["labels"]
+                for d in list_of_dicts
+                if d["model name"] == list(self.base_predictors.keys())[0]
+                and d["sample id"] == 0
+            )
+        )        
+    
         # combine fold predictions for each model
         for model_name in self.base_predictors.keys():
             for sample_id in range(self.n_samples):
@@ -614,20 +638,25 @@ class EnsembleIntegration:
                         if d["model name"] == model_name and d["sample id"] == sample_id
                     )
                 )
-                combined_predictions[
+                if len(set(labels)) > 2: #multiclass
+                    for class_id in range(model_predictions.shape[1]):
+                        combined_predictions[
+                            (modality, model_name, sample_id, class_id)
+                        ] = model_predictions[:, class_id]
+                else:
+                    combined_predictions[
                     modality, model_name, sample_id
                 ] = model_predictions
-        labels = np.concatenate(
-            list(
-                d["labels"]
-                for d in list_of_dicts
-                if d["model name"] == list(self.base_predictors.keys())[0]
-                and d["sample id"] == 0
+
+        if len(set(labels)) > 2: #multiclass
+            combined_predictions = pd.DataFrame(combined_predictions).rename_axis(
+                ["modality", "base predictor", "sample", "class"], axis=1
             )
-        )
-        combined_predictions = pd.DataFrame(combined_predictions).rename_axis(
-            ["modality", "base predictor", "sample"], axis=1
-        )
+        else:
+            combined_predictions = pd.DataFrame(combined_predictions).rename_axis(
+                ["modality", "base predictor", "sample"], axis=1
+            )
+
         combined_predictions["labels"] = labels
         return combined_predictions
 
@@ -646,15 +675,26 @@ class EnsembleIntegration:
         for fold_id in range(k_outer):
             predictions = {}
             for model_name in self.base_predictors.keys():
-                for sample_id in range(self.n_samples):
-                    model_predictions = list(
+                for sample_id in range(self.n_samples):                    
+                    if not isinstance(list_of_dicts[0]["y_pred"][0], (float, int, bool)): #multiclass
+                        model_predictions = np.vstack([
+                            d["y_pred"]
+                            for d in list_of_dicts
+                            if d["fold id"] == fold_id
+                            and d["model name"] == model_name
+                            and d["sample id"] == sample_id
+                        ])
+                        for class_id in range(model_predictions.shape[1]):
+                            predictions[modality, model_name, sample_id, class_id] = model_predictions[:, class_id]
+                    else:
+                        model_predictions = list(
                         d["y_pred"]
                         for d in list_of_dicts
                         if d["fold id"] == fold_id
                         and d["model name"] == model_name
                         and d["sample id"] == sample_id
                     )
-                    predictions[modality, model_name, sample_id] = model_predictions[0]
+                        predictions[modality, model_name, sample_id] = model_predictions[0]
             predictions = pd.DataFrame(predictions)
 
             if not model_building:
@@ -667,11 +707,15 @@ class EnsembleIntegration:
                 ]
                 predictions["labels"] = labels[0]
 
-            combined_predictions.append(
-                predictions.rename_axis(
+            if not isinstance(list_of_dicts[0]["y_pred"][0], (float, int, bool)): #multiclass
+                combined_predictions.append(predictions.rename_axis(
+                    ["modality", "base predictor", "sample", "class"], axis=1
+                ))
+            else:
+                combined_predictions.append(predictions.rename_axis(
                     ["modality", "base predictor", "sample"], axis=1
-                )
-            )
+                ))
+
 
         return combined_predictions
 

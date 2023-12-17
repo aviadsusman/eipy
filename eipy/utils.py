@@ -186,6 +186,9 @@ def retrieve_X_y(labelled_data):
     # longitudinal data. open to more data formats
     elif isinstance(labelled_data, list):
         X = [data.drop(columns=["labels"], level=0) for data in labelled_data]
+        '''PICK UP HERE MONDAY. LABEL ARRAYS ACROSS TIME.'''
+        # y = pd.concat([data["labels"] for data in labelled_data], axis=1).to_numpy()
+        # print(type(y), y.shape)
         y = np.ravel(labelled_data[0]["labels"])
     return X, y
 

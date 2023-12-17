@@ -209,10 +209,7 @@ class EnsembleIntegration:
 
         """
 
-        print(
-            f"""Training base predictors on {modality_name}...
-        \n... for ensemble performance analysis..."""
-        )
+        
         #  convert y to a numpy array
         y = y_to_numpy(y)
 
@@ -226,6 +223,10 @@ class EnsembleIntegration:
         #  check data format and train accordingly
         if X_is_dict(X):
             for modality_name, modality in X.items():
+                print(
+            f"""Training base predictors on {modality_name}...
+        \n... for ensemble performance analysis..."""
+        )
                 self._fit_base(
                     X=modality,
                     y=y,
@@ -233,6 +234,10 @@ class EnsembleIntegration:
                     modality_name=modality_name,
                 )
         else:
+            print(
+            f"""Training base predictors on {modality_name}...
+        \n... for ensemble performance analysis..."""
+        )
             self._fit_base(
                 X=X, y=y, base_predictors=base_predictors, modality_name=modality_name
             )

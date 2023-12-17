@@ -60,11 +60,10 @@ def scores(y_true, y_pred, metrics):
     Compute all metrics for a single set of predictions. Returns a dictionary
     containing metric keys, each paired to a tuple (score, threshold).
     """
-
     # default metrics to calculate
     metric_threshold_dict = {}
 
-    if len(set(y_true)) == 2: #binary classification
+    if len(np.unique(y_true)) == 2: #binary classification
         if metrics is None:
             metrics = {"fmax (minority)": fmax_score, "auc": roc_auc_score}
         pos_label = minority_class(y_true)  # gives value 1 or 0
@@ -96,6 +95,7 @@ def scores(y_true, y_pred, metrics):
     else:
         if isinstance(y_pred[0], np.ndarray):
             y_pred = [np.argmax(y) for y in  y_pred]
+
         precision_macro = precision_score(y_true, y_pred, average='macro')
         recall_macro = recall_score(y_true, y_pred, average='macro')
         f1_macro = f1_score(y_true, y_pred, average='macro')

@@ -11,7 +11,7 @@ import copy
 from tqdm import tqdm
 from sklearn.utils._testing import ignore_warnings
 from sklearn.exceptions import ConvergenceWarning
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, KFold
 from sklearn.base import clone
 from joblib import Parallel, delayed
 import warnings
@@ -140,6 +140,7 @@ class EnsembleIntegration:
         project_name="project",
         calibration_model=None,
         model_building=True,
+        time_series=False,
         verbose=1,
     ):
         if random_state is not None:
@@ -159,6 +160,7 @@ class EnsembleIntegration:
         self.project_name = project_name
         self.calibration_model = calibration_model
         self.model_building = model_building
+        self.time_series = time_series
         self.verbose = verbose
 
         self.final_models = {
@@ -167,13 +169,24 @@ class EnsembleIntegration:
         }  # for final model
         self.ensemble_training_data_final = None  # for final model
 
-        self.cv_outer = StratifiedKFold(
-            n_splits=self.k_outer, shuffle=True, random_state=self.random_state
-        )
+        
+        if self.time_series:
+            self.cv_outer = KFold(
+                n_splits=self.k_outer, shuffle=True, random_state=self.random_state
+            )
 
-        self.cv_inner = StratifiedKFold(
-            n_splits=self.k_inner, shuffle=True, random_state=self.random_state
-        )
+            self.cv_inner = KFold(
+                n_splits=self.k_inner, shuffle=True, random_state=self.random_state
+            )
+        else:
+            self.cv_outer = StratifiedKFold(
+                n_splits=self.k_outer, shuffle=True, random_state=self.random_state
+            )
+
+            self.cv_inner = StratifiedKFold(
+                n_splits=self.k_inner, shuffle=True, random_state=self.random_state
+            )
+
 
         self.ensemble_training_data = None
         self.ensemble_test_data = None
@@ -292,7 +305,6 @@ class EnsembleIntegration:
                 if isinstance(X_train, list): 
                     X_train = np.stack([df.values for df in X_train], axis=1)
                     X_test = np.stack([df.values for df in X_test], axis=1)
-
                 model.fit(X_train, y_train, epochs=10, batch_size=32)
                 y_pred = safe_predict_proba(model, X_test)
                 y_pred_combined.extend(y_pred)
@@ -302,6 +314,7 @@ class EnsembleIntegration:
         ensemble_predictions["labels"] = y_test_combined
 
         self.ensemble_predictions = pd.DataFrame.from_dict(ensemble_predictions)
+        print(self.ensemble_predictions)
         self.ensemble_summary = ensemble_summary(
             self.ensemble_predictions, self.metrics
         )

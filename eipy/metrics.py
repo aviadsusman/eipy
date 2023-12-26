@@ -95,7 +95,6 @@ def scores(y_true, y_pred, metrics):
     else:
         if isinstance(y_pred[0], np.ndarray):
             y_pred = [np.argmax(y) for y in  y_pred]
-
         precision_macro = precision_score(y_true, y_pred, average='macro')
         recall_macro = recall_score(y_true, y_pred, average='macro')
         f1_macro = f1_score(y_true, y_pred, average='macro')

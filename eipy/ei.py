@@ -162,6 +162,7 @@ class EnsembleIntegration:
         self.model_building = model_building
         self.time_series = time_series
         self.verbose = verbose
+        self.final_label_frequency = None
 
         self.final_models = {
             "base models": {},
@@ -495,7 +496,7 @@ class EnsembleIntegration:
         ) as parallel:
             for _outer_fold_id, (train_index_outer, _test_index_outer) in enumerate(
                 tqdm(
-                    cv_outer.split(X, y),
+                    cv_outer.split(X, self.final_label_frequency),
                     total=cv_outer.n_splits,
                     desc="Generating ensemble training data",
                     bar_format=bar_format,
@@ -567,7 +568,7 @@ class EnsembleIntegration:
                     desc=progress_string,
                     bar_format=bar_format,
                 )
-                for outer_fold_params in enumerate(cv_outer.split(X, y))
+                for outer_fold_params in enumerate(cv_outer.split(X, self.final_label_frequency))
                 for sample_state in enumerate(self.random_numbers_for_samples)
             )
 

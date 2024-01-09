@@ -11,7 +11,7 @@ import copy
 from tqdm import tqdm
 from sklearn.utils._testing import ignore_warnings
 from sklearn.exceptions import ConvergenceWarning
-from sklearn.model_selection import StratifiedKFold, KFold
+from sklearn.model_selection import StratifiedKFold
 from sklearn.base import clone
 from joblib import Parallel, delayed
 import warnings
@@ -140,7 +140,6 @@ class EnsembleIntegration:
         project_name="project",
         calibration_model=None,
         model_building=True,
-        time_series=False,
         verbose=1,
     ):
         if random_state is not None:

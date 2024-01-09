@@ -160,7 +160,6 @@ class EnsembleIntegration:
         self.project_name = project_name
         self.calibration_model = calibration_model
         self.model_building = model_building
-        self.time_series = time_series
         self.verbose = verbose
         self.final_label_frequency = None
 
@@ -170,23 +169,13 @@ class EnsembleIntegration:
         }  # for final model
         self.ensemble_training_data_final = None  # for final model
 
-        
-        if self.time_series:
-            self.cv_outer = KFold(
-                n_splits=self.k_outer, shuffle=True, random_state=self.random_state
-            )
+        self.cv_outer = StratifiedKFold(
+            n_splits=self.k_outer, shuffle=True, random_state=self.random_state
+        )
 
-            self.cv_inner = KFold(
-                n_splits=self.k_inner, shuffle=True, random_state=self.random_state
-            )
-        else:
-            self.cv_outer = StratifiedKFold(
-                n_splits=self.k_outer, shuffle=True, random_state=self.random_state
-            )
-
-            self.cv_inner = StratifiedKFold(
-                n_splits=self.k_inner, shuffle=True, random_state=self.random_state
-            )
+        self.cv_inner = StratifiedKFold(
+            n_splits=self.k_inner, shuffle=True, random_state=self.random_state
+        )
 
 
         self.ensemble_training_data = None

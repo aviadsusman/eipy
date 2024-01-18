@@ -170,7 +170,7 @@ class EnsembleIntegration:
         self.ensemble_training_data_final = None  # for final model
 
         
-        if self.time_series:
+        if self.time_series: #to ensure consistent sampling across time points
             self.cv_outer = KFold(
                 n_splits=self.k_outer, shuffle=True, random_state=self.random_state
             )

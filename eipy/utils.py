@@ -86,7 +86,7 @@ def y_to_numpy(y):
         )
 
     # if not is_binary_array(_y):
-    #     raise ValueError("y must contain binary values.")
+    #     raise ValueError("y must contain pip list.")
 
     return _y
 

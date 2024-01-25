@@ -303,7 +303,6 @@ class EnsembleIntegration:
         ensemble_predictions["labels"] = y_test_combined
 
         self.ensemble_predictions = pd.DataFrame.from_dict(ensemble_predictions)
-        print(self.ensemble_predictions)
         self.ensemble_summary = ensemble_summary(
             self.ensemble_predictions, self.metrics
         )

@@ -8,6 +8,7 @@ import numpy as np
 import random
 import dill as pickle
 import copy
+import keras
 from tqdm import tqdm
 from sklearn.utils._testing import ignore_warnings
 from sklearn.exceptions import ConvergenceWarning
@@ -378,27 +379,39 @@ class EnsembleIntegration:
         self.feature_names[modality_name] = feature_names
         self.n_features_per_modality.append(X.shape[1])
 
-        ensemble_training_data_modality = self._fit_base_inner(
-            X=X,
-            y=y,
-            cv_outer=self.cv_outer,
-            cv_inner=self.cv_inner,
-            base_predictors=self.base_predictors,
-            modality_name=modality_name,
-        )
+        #DL base predictors
+        if any(isinstance(model, keras.Model) for model in self.base_predictors.values()):
+
+            ensemble_training_data_modality, ensemble_test_data_modality = self._fit_dl_base(
+                X=X,
+                y=y,
+                cv_outer=self.cv_outer,
+                cv_inner=self.cv_inner,
+                base_predictors=self.base_predictors,
+                modality_name=modality_name)
+
+        else:
+            ensemble_training_data_modality = self._fit_base_inner(
+                X=X,
+                y=y,
+                cv_outer=self.cv_outer,
+                cv_inner=self.cv_inner,
+                base_predictors=self.base_predictors,
+                modality_name=modality_name,
+            )
+
+
+            ensemble_test_data_modality = self._fit_base_outer(
+                X=X,
+                y=y,
+                cv_outer=self.cv_outer,
+                base_predictors=self.base_predictors,
+                modality_name=modality_name,
+            )
 
         self.ensemble_training_data = append_modality(
             self.ensemble_training_data, ensemble_training_data_modality
         )
-
-        ensemble_test_data_modality = self._fit_base_outer(
-            X=X,
-            y=y,
-            cv_outer=self.cv_outer,
-            base_predictors=self.base_predictors,
-            modality_name=modality_name,
-        )
-
         self.ensemble_test_data = append_modality(
             self.ensemble_test_data, ensemble_test_data_modality
         )  # append data to dataframe
@@ -543,6 +556,27 @@ class EnsembleIntegration:
             return output
         else:
             return self._combine_predictions_outer(output, modality_name)
+
+    def _fit_dl_base(
+            self, X, y, cv_outer, cv_inner, modality_name, base_predictors=None, model_building=False):
+        """
+        Train DL base predictors without an inner CV. Pass through training data to generate ensemble training data.
+        Pass through test data to evaluate and generate ensemble test data.
+        """
+        for _fold_id, (train_index, _test_index) in cv_outer.split(X, y):
+            
+            X_train_fold, X_test_fold = X[train_index], X[_test_index]
+            y_train_fold, y_test_fold = y[train_index], y[_test_index]
+
+            #reorder X_train, y_train in accordance with the inner cv
+            reordering= np.concatenate([indices[-1] for _, indices in enumerate(cv_inner.split(X_train_fold,y_train_fold))])
+            X = X[reordering]
+            y = y[reordering]
+            
+            for model_name, model in self.base_predictors.items():
+                print("hi")
+
+
 
     @ignore_warnings(category=ConvergenceWarning)
     def _train_predict_single_base_predictor(

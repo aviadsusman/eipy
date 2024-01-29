@@ -381,7 +381,6 @@ class EnsembleIntegration:
 
         #DL base predictors
         if any(isinstance(model, keras.Model) for model in self.base_predictors.values()):
-
             ensemble_training_data_modality, ensemble_test_data_modality = self._fit_dl_base(
                 X=X,
                 y=y,
@@ -563,18 +562,65 @@ class EnsembleIntegration:
         Train DL base predictors without an inner CV. Pass through training data to generate ensemble training data.
         Pass through test data to evaluate and generate ensemble test data.
         """
-        for _fold_id, (train_index, _test_index) in cv_outer.split(X, y):
-            
-            X_train_fold, X_test_fold = X[train_index], X[_test_index]
-            y_train_fold, y_test_fold = y[train_index], y[_test_index]
+        if base_predictors is not None:
+            self.base_predictors = base_predictors  # update base predictors
 
-            #reorder X_train, y_train in accordance with the inner cv
-            reordering= np.concatenate([indices[-1] for _, indices in enumerate(cv_inner.split(X_train_fold,y_train_fold))])
-            X = X[reordering]
-            y = y[reordering]
-            
-            for model_name, model in self.base_predictors.items():
-                print("hi")
+        output_train = []
+        output_test = []
+        for model_name, model in base_predictors.items():
+            original_weights = model.get_weights()
+            for fold_params in enumerate(cv_outer.split(X, y)):
+                for sample_state in enumerate(self.random_numbers_for_samples):
+                    fold_id, (train_index, test_index) = fold_params
+                    X_train_fold, X_test_fold = X[train_index], X[test_index]
+                    y_train_fold, y_test_fold = y[train_index], y[test_index]
+
+                    #reorder X_train, y_train in accordance with the inner cv
+                    reordering= np.concatenate([indices[-1] for _, indices in enumerate(cv_inner.split(X_train_fold,y_train_fold))])
+                    X_train_fold = X_train_fold[reordering]
+                    y_train_fold = y_train_fold[reordering]
+
+                    sample_id, sample_random_state = sample_state
+                    # X_sample, y_sample = sample(
+                    #                     X_train_fold,
+                    #                     y_train_fold,
+                    #                     strategy=self.sampling_strategy,
+                    #                     random_state=sample_random_state)
+
+                    # if self.calibration_model is not None:
+                    #     self.calibration_model.base_estimator = model
+                    #     model = self.calibration_model
+
+
+                    #eventually incorporate into train_predict_single_base_predictor
+                    model.fit(X_train_fold, y_train_fold, batch_size=200)
+                    
+
+                    y_pred_train = safe_predict_proba(model, X_train_fold).flatten()
+                    results_dict_train = {
+                        "model name": model_name,
+                        "sample id": sample_id,
+                        "fold id": fold_id,
+                        "y_pred": y_pred_train,
+                        "labels": y_train_fold,
+                    }
+                    output_train.append(results_dict_train)
+
+                    y_pred_test = safe_predict_proba(model, X_test_fold).flatten()
+                    results_dict_test = {
+                        "model name": model_name,
+                        "sample id": sample_id,
+                        "fold id": fold_id,
+                        "y_pred": y_pred_test,
+                        "labels": y_test_fold,
+                    }
+                    output_test.append(results_dict_test)
+
+                    #reset weights for next fold.
+                    model.set_weights(original_weights)
+
+        return self._combine_predictions_outer(output_train, modality=modality_name, model_building=model_building), self._combine_predictions_outer(output_test, modality=modality_name, model_building=model_building)
+
 
 
 

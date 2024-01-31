@@ -347,6 +347,11 @@ class EnsembleIntegration:
             for base_model_dict in base_models:
                 base_model = pickle.loads(base_model_dict["pickled model"])
                 y_pred = safe_predict_proba(base_model, X)
+                #DL base predictors
+                if isinstance(base_model, keras.Model):
+                    print("TRUE")
+                    y_pred = y_pred.flatten()
+
 
                 base_model_dict["fold id"] = 0
                 base_model_dict["y_pred"] = y_pred
@@ -431,26 +436,36 @@ class EnsembleIntegration:
         """
         print("\n... for final ensemble...")
 
-        ensemble_training_data_modality = self._fit_base_inner(
-            X=X,
-            y=y,
-            cv_inner=self.cv_inner,
-            cv_outer=dummy_cv(),  # returns indices of X with an empty set of test indices
-            base_predictors=self.base_predictors,
-            modality_name=modality_name,
-        )
-
-        self.ensemble_training_data_final = append_modality(
-            self.ensemble_training_data_final, ensemble_training_data_modality
-        )
-
-        base_model_list_of_dicts = self._fit_base_outer(
+        #DL base predictors
+        if any(isinstance(model, keras.Model) for model in self.base_predictors.values()):
+            ensemble_training_data_modality , base_model_list_of_dicts = self._fit_dl_base_final(
+                X=X,
+                y=y,
+                cv_inner=self.cv_inner,
+                cv_outer=dummy_cv(),  # returns indices of X with an empty set of test indices
+                base_predictors=self.base_predictors,
+                modality_name=modality_name,
+            )
+        else:
+            ensemble_training_data_modality = self._fit_base_inner(
+                X=X,
+                y=y,
+                cv_inner=self.cv_inner,
+                cv_outer=dummy_cv(),  # returns indices of X with an empty set of test indices
+                base_predictors=self.base_predictors,
+                modality_name=modality_name,
+            )
+            base_model_list_of_dicts = self._fit_base_outer(
             X=X,
             y=y,
             cv_outer=dummy_cv(),  # returns indices of X with an empty set of test indices
             base_predictors=self.base_predictors,
             modality_name=modality_name,
             model_building=self.model_building,
+            )
+
+        self.ensemble_training_data_final = append_modality(
+            self.ensemble_training_data_final, ensemble_training_data_modality
         )
 
         self.final_models["base models"][modality_name] = base_model_list_of_dicts
@@ -507,14 +522,7 @@ class EnsembleIntegration:
 
         return ensemble_training_data_modality
 
-    def _fit_base_outer(
-        self,
-        X,
-        y,
-        cv_outer,
-        base_predictors=None,
-        modality_name=None,
-        model_building=False,
+    def _fit_base_outer(self, X, y, cv_outer, base_predictors=None, modality_name=None, model_building=False,
     ):
         """
         Train each base predictor on each outer training set.
@@ -557,7 +565,8 @@ class EnsembleIntegration:
             return self._combine_predictions_outer(output, modality_name)
 
     def _fit_dl_base(
-            self, X, y, cv_outer, cv_inner, modality_name, base_predictors=None, model_building=False):
+            self, X, y, cv_outer, cv_inner, modality_name, base_predictors=None, model_building=False
+        ):
         """
         Train DL base predictors without an inner CV. Pass through training data to generate ensemble training data.
         Pass through test data to evaluate and generate ensemble test data.
@@ -567,7 +576,7 @@ class EnsembleIntegration:
 
         output_train = []
         output_test = []
-        for model_name, model in base_predictors.items():
+        for model_name, model in self.base_predictors.items():
             original_weights = model.get_weights()
             for fold_params in enumerate(cv_outer.split(X, y)):
                 for sample_state in enumerate(self.random_numbers_for_samples):
@@ -575,27 +584,26 @@ class EnsembleIntegration:
                     X_train_fold, X_test_fold = X[train_index], X[test_index]
                     y_train_fold, y_test_fold = y[train_index], y[test_index]
 
-                    #reorder X_train, y_train in accordance with the inner cv
+                    #Reorder X_train, y_train in accordance with the inner cv 
+                    #to align metadata with structured modalities.
                     reordering= np.concatenate([indices[-1] for _, indices in enumerate(cv_inner.split(X_train_fold,y_train_fold))])
                     X_train_fold = X_train_fold[reordering]
                     y_train_fold = y_train_fold[reordering]
 
                     sample_id, sample_random_state = sample_state
-                    # X_sample, y_sample = sample(
-                    #                     X_train_fold,
-                    #                     y_train_fold,
-                    #                     strategy=self.sampling_strategy,
-                    #                     random_state=sample_random_state)
+                    X_sample, y_sample = sample(
+                                        X_train_fold,
+                                        y_train_fold,
+                                        strategy=self.sampling_strategy,
+                                        random_state=sample_random_state)
 
-                    # if self.calibration_model is not None:
-                    #     self.calibration_model.base_estimator = model
-                    #     model = self.calibration_model
-
+                    if self.calibration_model is not None:
+                        self.calibration_model.base_estimator = model
+                        model = self.calibration_model
 
                     #eventually incorporate into train_predict_single_base_predictor
-                    model.fit(X_train_fold, y_train_fold, batch_size=200)
+                    model.fit(X_sample, y_sample, batch_size=10)
                     
-
                     y_pred_train = safe_predict_proba(model, X_train_fold).flatten()
                     results_dict_train = {
                         "model name": model_name,
@@ -618,10 +626,90 @@ class EnsembleIntegration:
 
                     #reset weights for next fold.
                     model.set_weights(original_weights)
+    
+        return self._combine_predictions_outer(output_train, modality=modality_name), self._combine_predictions_outer(output_test, modality=modality_name)
+        
+    def _fit_dl_base_final(
+            self, X, y, cv_inner, cv_outer, modality_name, base_predictors=None
+        ):
+        """
+        Train final DL base predictor models. Generate final ensemble training data and get final base predictor weights.
+        """
+        if base_predictors is not None:
+            self.base_predictors = base_predictors  # update base predictors
+        
+        ensemble_training_data_modality = []
+        output_final = []
 
-        return self._combine_predictions_outer(output_train, modality=modality_name, model_building=model_building), self._combine_predictions_outer(output_test, modality=modality_name, model_building=model_building)
+        for _outer_fold_id, (train_index_outer, _test_index_outer) in enumerate(
+            tqdm(
+                cv_outer.split(X, y),
+                total=cv_outer.n_splits,
+                desc="Generating final ensemble training data",
+                bar_format=bar_format,
+                )
+        ):  
+            X_train_outer = X[train_index_outer]
+            y_train_outer = y[train_index_outer]
+            output_ensemble_train = []
+            for model_name, model in self.base_predictors.items():
+                original_weights = model.get_weights()
+                for fold_params in enumerate(cv_inner.split(X_train_outer, y_train_outer)):
+                    for sample_state in enumerate(self.random_numbers_for_samples):
+                        fold_id, (train_index, test_index) = fold_params
+                        X_train_fold, X_test_fold = X[train_index], X[test_index]
+                        y_train_fold, y_test_fold = y[train_index], y[test_index]
+                        
+                        sample_id, sample_random_state = sample_state
+                        X_sample, y_sample = sample(
+                                            X_train_fold,
+                                            y_train_fold,
+                                            strategy=self.sampling_strategy,
+                                            random_state=sample_random_state)
 
+                        if self.calibration_model is not None:
+                            self.calibration_model.base_estimator = model
+                            model = self.calibration_model
 
+                        #eventually incorporate into train_predict_single_base_predictor
+                        model.fit(X_sample, y_sample, batch_size=10)
+                        
+                        y_pred_ensemble_train = safe_predict_proba(model, X_test_fold).flatten()
+                        results_dict_ensemble_train = {
+                            "model name": model_name,
+                            "sample id": sample_id,
+                            "fold id": fold_id,
+                            "y_pred": y_pred_ensemble_train,
+                            "labels": y_test_fold,
+                        }
+                        output_ensemble_train.append(results_dict_ensemble_train)
+                        
+                        #reset weights for next fold
+                        model.set_weights(original_weights)
+
+                for sample_state in enumerate(self.random_numbers_for_samples):
+                    sample_id, sample_random_state = sample_state
+
+                    X_sample, y_sample = sample(
+                        X_train_outer,
+                        y_train_outer,
+                        strategy=self.sampling_strategy,
+                        random_state=sample_random_state,
+                    )
+                    model.fit(X_sample,y_sample)
+                    results_dict_final = {
+                        "model name": model_name,
+                        "sample id": sample_id,
+                        "pickled model": pickle.dumps(
+                            model
+                        ),  # pickle model to reduce memory usage. use pickle.loads() to de-serialize
+                    }
+                    output_final.append(results_dict_final)
+            
+            combined_predictions_final = self._combine_predictions_inner(output_ensemble_train, modality_name)
+            ensemble_training_data_modality.append(combined_predictions_final)
+        
+        return ensemble_training_data_modality, output_final
 
 
     @ignore_warnings(category=ConvergenceWarning)

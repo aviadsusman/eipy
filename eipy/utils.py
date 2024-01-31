@@ -147,17 +147,38 @@ def sample(X, y, strategy, random_state):
         ros = RandomOverSampler(
             random_state=random_state, sampling_strategy=(y_total / 2) / y_maj_count
         )
-        X_maj, y_maj = rus.fit_resample(X=X, y=y)
-        X_maj = X_maj[y_maj == maj_class]
-        y_maj = y_maj[y_maj == maj_class]
-        X_min, y_min = ros.fit_resample(X=X, y=y)
-        X_min = X_min[y_min != maj_class]
-        y_min = y_min[y_min != maj_class]
-        X_resampled = np.concatenate([X_maj, X_min])
-        y_resampled = np.concatenate([y_maj, y_min])
+        if X.ndim > 2: #high dimensional tensor data
+            shape = X.shape[1:]
+            X_reshaped = X.reshape(X.shape[0], np.prod(shape))
+
+            X_maj, y_maj = rus.fit_resample(X=X_reshaped, y=y)
+            X_maj = X_maj[y_maj == maj_class]
+            y_maj = y_maj[y_maj == maj_class]
+            X_min, y_min = ros.fit_resample(X=X_reshaped, y=y)
+            X_min = X_min[y_min != maj_class]
+            y_min = y_min[y_min != maj_class]
+            X_maj= X_maj.reshape((X_maj.shape[0],)+shape) 
+            X_min = X_min.reshape((X_min.shape[0],)+shape)
+            X_resampled = np.concatenate([X_maj, X_min])
+            y_resampled = np.concatenate([y_maj, y_min])
+        else:
+            X_maj, y_maj = rus.fit_resample(X=X, y=y)
+            X_maj = X_maj[y_maj == maj_class]
+            y_maj = y_maj[y_maj == maj_class]
+            X_min, y_min = ros.fit_resample(X=X, y=y)
+            X_min = X_min[y_min != maj_class]
+            y_min = y_min[y_min != maj_class]
+            X_resampled = np.concatenate([X_maj, X_min])
+            y_resampled = np.concatenate([y_maj, y_min])
 
     if (strategy == "undersampling") or (strategy == "oversampling"):
-        X_resampled, y_resampled = sampler.fit_resample(X=X, y=y)
+        if X.ndim > 2: #high dimensional tensor data
+            shape = X.shape[1:]
+            X_reshaped = X.reshape(X.shape[0], np.prod(shape))
+            X_resampled, y_resampled = sampler.fit_resample(X=X_reshaped, y=y)
+            X_resampled = X_resampled.reshape((X_resampled.shape[0],)+shape)
+        else:
+            X_resampled, y_resampled = sampler.fit_resample(X=X, y=y)
     return X_resampled, y_resampled
 
 

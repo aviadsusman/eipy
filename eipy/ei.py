@@ -1,7 +1,7 @@
 """
 Ensemble Integration
 
-@author: Jamie Bennett, Yan Chak (Richard) Li
+@author: Jamie Bennett, Yan Chak (Richard) Li, Aviad Susman
 """
 import pandas as pd
 import numpy as np
@@ -339,7 +339,10 @@ class EnsembleIntegration:
             X, _ = X_to_numpy(X)
 
             base_models = copy.deepcopy(self.final_models["base models"][modality_name])
+            self.base_predictors = {}
             for base_model_dict in base_models:
+                if base_model_dict['model name'] not in self.base_predictors.keys():
+                    self.base_predictors[base_model_dict['model name']] = 0
                 base_model = pickle.loads(base_model_dict["pickled model"])
                 y_pred = safe_predict_proba(base_model, X)
                 #DL base predictors
@@ -383,7 +386,6 @@ class EnsembleIntegration:
                 X=X,
                 y=y,
                 cv_outer=self.cv_outer,
-                cv_inner=self.cv_inner,
                 base_predictors=self.base_predictors,
                 modality_name=modality_name)
 
@@ -558,7 +560,7 @@ class EnsembleIntegration:
             return self._combine_predictions_outer(output, modality_name)
 
     def _fit_dl_base(
-            self, X, y, cv_outer, cv_inner, modality_name, base_predictors=None
+            self, X, y, cv_outer, modality_name, base_predictors=None
         ):
         """
         Train DL base predictors without an inner CV. Pass through training data to generate ensemble training data.
@@ -569,10 +571,9 @@ class EnsembleIntegration:
 
         output_train = []
         output_test = []
-        for model_name, model in self.base_predictors.items():
-            model_params = model_name, model
+        for model_params in self.base_predictors.items():
             #get original model weights.
-            original_weights = model.get_weights()
+            original_weights = model_params[1].get_weights()
             for fold_params in enumerate(
                 tqdm(
                     cv_outer.split(X, y),
@@ -583,9 +584,9 @@ class EnsembleIntegration:
             ):
                 for sample_state in enumerate(self.random_numbers_for_samples):
                     results_dicts = self._train_predict_single_base_predictor(X, y, model_params=model_params, fold_params=fold_params, sample_state=sample_state)
-                    model.set_weights(original_weights)
                     output_train.append(results_dicts[0])
                     output_test.append(results_dicts[1])
+                    model_params[1].set_weights(original_weights)
 
         return self._combine_predictions_outer(output_train, modality=modality_name), self._combine_predictions_outer(output_test, modality=modality_name)
         
@@ -598,32 +599,31 @@ class EnsembleIntegration:
         if base_predictors is not None:
             self.base_predictors = base_predictors  # update base predictors
         
+        output_ensemble_train = []
         ensemble_training_data_modality = []
         output_final = []
 
-        for outer_fold_params in enumerate(
-            tqdm(
-                cv_outer.split(X, y),
-                total=cv_outer.n_splits,
-                desc="Generating final ensemble training data",
-                bar_format=bar_format,
-                )
-        ):  
+        for outer_fold_params in enumerate(cv_outer.split(X,y)):
             #Get final weights
-            for model_name, model in self.base_predictors.items():
-                model_params = model_name, model
-                original_weights= model.get_weights()
+            for model_params in self.base_predictors.items():
+                original_weights= model_params[1].get_weights()
                 for sample_state in enumerate(self.random_numbers_for_samples):
                     results_dict_final = self._train_predict_single_base_predictor(X, y, model_params=model_params, fold_params=outer_fold_params, sample_state=sample_state, model_building=True)
-                    model.set_weights(original_weights)
+                    model_params[1].set_weights(original_weights)
                     output_final.append(results_dict_final[1])
-            #Get final training data
-            output_ensemble_train = []
-            for inner_fold_params in enumerate(cv_inner.split(X, y)):
-                for sample_state in enumerate(self.random_numbers_for_samples):
-                    results_dict_ensemble_train = self._train_predict_single_base_predictor(X, y, model_params=model_params, fold_params=inner_fold_params, sample_state=sample_state)
-                    model.set_weights(original_weights)
-                    output_ensemble_train.append(results_dict_ensemble_train[1])
+                #Get final training data
+                for inner_fold_params in enumerate(
+                    tqdm(
+                    cv_inner.split(X, y),
+                    total=cv_inner.n_splits,
+                    desc="Generating final ensemble training data",
+                    bar_format=bar_format,
+                    ) 
+                ):
+                    for sample_state in enumerate(self.random_numbers_for_samples):
+                        results_dict_ensemble_train = self._train_predict_single_base_predictor(X, y, model_params=model_params, fold_params=inner_fold_params, sample_state=sample_state)
+                        model_params[1].set_weights(original_weights)
+                        output_ensemble_train.append(results_dict_ensemble_train[1])
 
             combined_predictions_final = self._combine_predictions_inner(output_ensemble_train, modality_name)
             ensemble_training_data_modality.append(combined_predictions_final)
@@ -667,7 +667,7 @@ class EnsembleIntegration:
         )
 
         if isinstance(model, keras.Model): #build out for hyperparam tuning.
-            model.fit(X_sample, y_sample, batch_size=10)
+            model.fit(X_sample, y_sample, batch_size=10, epochs=1)
         else:
             model.fit(X_sample, y_sample)
 
@@ -682,7 +682,6 @@ class EnsembleIntegration:
 
         else:
             y_pred = safe_predict_proba(model, X_test).flatten()
-
             results_dict = {
                 "model name": model_name,
                 "sample id": sample_id,
@@ -693,7 +692,6 @@ class EnsembleIntegration:
         
         if isinstance(model, keras.Model):
             y_pred_train = safe_predict_proba(model, X_train).flatten()
-
             results_dict_train = {
                 "model name": model_name,
                 "sample id": sample_id,
@@ -701,7 +699,6 @@ class EnsembleIntegration:
                 "y_pred": y_pred_train,
                 "labels": y_train,
             }
-
             return results_dict_train, results_dict
         else:
          return results_dict

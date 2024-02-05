@@ -667,7 +667,7 @@ class EnsembleIntegration:
         )
 
         if isinstance(model, keras.Model): #build out for hyperparam tuning.
-            model.fit(X_sample, y_sample, batch_size=10, epochs=1)
+            model.fit(X_sample, y_sample, batch_size=10, epochs=10)
         else:
             model.fit(X_sample, y_sample)
 

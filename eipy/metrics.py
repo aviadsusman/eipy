@@ -104,9 +104,12 @@ def scores(y_true, y_pred, metrics):
         f1_micro = f1_score(y_true, y_pred, average='micro')
 
         metric_threshold_dict = {
-            "precision" : (precision_macro, precision_micro),
-            "recall" : (recall_macro, recall_micro),
-            "f1" : (f1_macro,f1_micro)
+            "precision (macro)" : (precision_macro, "argmax"),
+            "recall (macro)" : (recall_macro, "argmax"),
+            "f1 (macro)" : (f1_macro,"argmax"),
+            "precision (micro)" : (precision_micro, "argmax"),
+            "recall (micro)" : (recall_micro, "argmax"),
+            "f1 (micro)" : (f1_micro,"argmax"),
         }
 
     return metric_threshold_dict

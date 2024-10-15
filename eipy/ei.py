@@ -9,6 +9,8 @@ import random
 import dill as pickle
 import copy
 import keras
+from keras.callbacks import Callback, EarlyStopping
+import keras.backend as K
 from tqdm import tqdm
 from sklearn.utils._testing import ignore_warnings
 from sklearn.exceptions import ConvergenceWarning
@@ -33,7 +35,8 @@ from eipy.metrics import (
     base_summary,
     ensemble_summary,
 )
-
+from keras.callbacks import Callback, EarlyStopping
+import keras.backend as K
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
@@ -574,6 +577,7 @@ class EnsembleIntegration:
         for model_params in self.base_predictors.items():
             #get original model weights.
             original_weights = model_params[1].get_weights()
+            
             for fold_params in enumerate(
                 tqdm(
                     cv_outer.split(X, y),
@@ -667,7 +671,8 @@ class EnsembleIntegration:
         )
 
         if isinstance(model, keras.Model): #build out for hyperparam tuning.
-            model.fit(X_sample, y_sample, batch_size=10, epochs=10)
+            early_stopping = EarlyStopping(monitor='val_loss', patience=20, restore_best_weights=True) #make this an EI param
+            model.fit(X_sample, y_sample, epochs=20, validation_data=(X_test, y_test), callbacks=[early_stopping], verbose=1)
         else:
             model.fit(X_sample, y_sample)
 
